@@ -9,6 +9,7 @@ DealersHand:	   .word 0:20
 Player1Hand:
 Player2Hand:
 YourHand:
+NumbersGenerated:  .word 0:52 #First address holds last
 
 Deck:
 	.word '2', 'H' # (Card, Suite)
@@ -154,9 +155,20 @@ sw $ra, 4($sp)           #Store stackpointer for $ra
 
 add $a1, $0, 51	         #Specify the limit on the range
 li $v0, 42               #specify read char
-syscall
-add $a0, $a0, 0		 #Add to return, range will be 0-51
 
-add $v0, $0, $a0	 #Return random number
+add $t2, $s0, 4	         #Temp reg for address of most recently stored number in NumbersGenerated
 
-jr $ra
+genAgain:syscall
+la $a2, NumbersGenerated #Load address for first possible number delt, used for the loop to check cards delt
+checkNextInd:
+
+lw $a3, 0($a2)		   #Load number at current index
+beq $a0, $a3, genAgain	   #When number has been called before, generate a new one
+add $a2, $a2, 4		   #Move to next address on NumbersGenerated stack
+bne $a2, $t2, checkNextInd #When all cards delt have not been checked, continue
+
+sw $a0, 0($s0)		   #Save new number to bottom of stack
+add $s0, $0, $a2
+
+add $v0, $0, $a0	   #Return random number
+
