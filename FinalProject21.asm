@@ -82,6 +82,46 @@ jal DealOutCards	   #Deal out all cards at the beginning of the game
 exit:li   $v0, 10          #system call for exit
 syscall                    # Exit!
 
+########### Function to Draw a Box ###########
+## $a0 for x 0-256
+## $a1 for y 0-256
+## $a2 for color number 0-7
+## $a3 = size of the box 
+##############################################
+DrawRectangle:
+addiu $sp, $sp, -24     #Open up two words on stack
+sw $ra, 20($sp)		#Store ra
+sw $a0, 16($sp)		#Store a0
+sw $a1, 12($sp)		#Store a1
+sw $a2, 8($sp)		#Store a2
+sw $a3, 4($sp)		#Store a3
+
+add $t1, $0, 3		#Copy a3 to temp reg
+div $a3, $t1
+mflo $t1		
+add $t1, $t1, $a3	#Length is 3/2 of card with
+
+RectLoop:
+sw $t1, 0($sp)		#Store a4
+lw $a0, 16($sp)		#Store a0
+lw $a1, 12($sp)		#Store a1
+lw $a2, 8($sp)		#Store a2
+lw $a3, 4($sp)		#Store a3
+
+jal DrawHorizLine	#Draw current row
+add $a1, $a1, 1		#Increment Y coordinate
+sw $a1, 12($sp)		#Reload a1
+lw $a3, 4($sp)		#Reload a3
+lw $t1, 0($sp)		#Store a4
+
+addiu $t1, $t1, -1	#Decrement remaining rows left
+bne $t1, $0, RectLoop	#Continue when more rows are left
+
+lw $ra, 20($sp)		#Restore ra
+lw $t1, 0($sp)		#Restore a4
+addiu $sp, $sp, 24      #Restore position of stack pointer
+jr $ra
+
 ##### Deals cards, game begins ##########
 ########################################
 DealOutCards:
@@ -168,7 +208,8 @@ add $a2, $a2, 4		   #Move to next address on NumbersGenerated stack
 bne $a2, $t2, checkNextInd #When all cards delt have not been checked, continue
 
 sw $a0, 0($s0)		   #Save new number to bottom of stack
-add $s0, $0, $a2
+add $s0, $0, $a2	   #Save address to new bottom of the stack after saving the value
 
 add $v0, $0, $a0	   #Return random number
 
+jr $ra
