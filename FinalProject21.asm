@@ -16,6 +16,20 @@ AsciiHeart:  .asciiz "!"	#Alias for heart
 AciiDiamond: .asciiz "@"	#Alias for diamond
 AsciiSpade:  .asciiz "#"	#Alias for spade
 AsciiClover: .asciiz "$"	#Alieas for clover
+Text0:       .asciiz "0"
+Text1:       .asciiz "1"
+Text2:       .asciiz "2"
+Text3:       .asciiz "3"
+Text4:       .asciiz "4"
+Text5:       .asciiz "5"
+Text6:       .asciiz "6"
+Text7:       .asciiz "7"
+Text8:       .asciiz "8"
+Text9:       .asciiz "9"
+TextJ:       .asciiz "J"
+TextQ:       .asciiz "Q"
+TextK:       .asciiz "K"
+TextA:       .asciiz "A"
 
 ColorTable: 
 	.word 0x000000     #black
@@ -68,7 +82,7 @@ Deck:
 	.word '9', '@', 4
 	.word '9', '#', 0
 	.word '9', '$', 0
-	.word  10, '!', 4
+	.word  10, '!', 4	#Used 10 instead of char value, handled in DrawCard
 	.word  10, '@', 4
 	.word  10, '#', 0
 	.word  10, '$', 0
@@ -147,12 +161,10 @@ la $s0, NumbersGenerated   #Use as a unique stack pointer for numbers that were 
 
 Main:
 
-#jal Init		   #Initialize program, seeds random value
+jal Init		   #Initialize program, seeds random value
 
-#jal DealOutCards	   #Deal out all cards at the beginning of the game
+jal DealOutCards	   #Deal out all cards at the beginning of the game
 
-li $a0, 2
-li $a1, 1
 jal DrawCard
 
 
@@ -164,10 +176,10 @@ syscall                    # Exit!
 ## $a1 Deck index
 #################################################
 DrawCard:
-addiu $sp, $sp, -20     #Open up two words on stack
-sw $ra, 16($sp)		#Store ra
-sw $a0, 12($sp)		#Save seat position
-sw $a1, 8($sp) 		#Save original a1
+addiu $sp, $sp, -24     #Open up two words on stack
+sw $ra, 20($sp)		#Store ra
+sw $a0, 16($sp)		#Save seat position
+sw $a1, 12($sp) 	#Save original a1
 
 la $t0, CardTable	#Load address for card table
 mul $a0, $a0, 8		#Each position is contains x and y values, 8 bytes
@@ -176,45 +188,117 @@ add $t0, $t0, $a0	#Add data offset to calc correct index in table
 lw $a0, 0($t0)		#Load x value
 lw $a1, 4($t0)		#Load y value
 
-sw $a0, 4($sp)		#Save x value for after DrawRectangle, will need to draw number and suite
-sw $a1, 0($sp)
+sw $a0, 8($sp)		#Save x value for after DrawRectangle, will need to draw number and suite
+sw $a1, 4($sp)
 
 li $a2, 5		#Load color white, hardcoded
 li $a3, 18		#Load card size, hardcoded
 jal DrawRectangle	#Draw the card
 
-lw $a0, 12($sp)		#Restore original seat position
-lw $a1, 8($sp)		#Restore original deck index
+lw $a0, 16($sp)		#Restore original seat position
+lw $a1, 12($sp)		#Restore original deck index
 
 la $t0, Deck
 mul $a1, $a1, 12		#Each position is contains x and y values, 12 bytes
 add $t0, $t0, $a1	#Add data offset to calc correct index in table
+sw $t0, 0($sp)		#Save address to the requested card info in deck for after after first OutText call
 
-lw $a0, 4($sp)		#Save x value for after DrawRectangle, will need to draw number and suite
-lw $a1, 0($sp)
+lw $a0, 8($sp)		#Save x value for after DrawRectangle, will need to draw number and suite
+lw $a1, 4($sp)
 
 lw $t1, 0($t0)		#Load char for card number
 lw $t2, 4($t0)		#Load char for suit
 
-beq $t2, '!', num1	#Switch Case for number to enter into simon circle
-beq $t2, '@', num2	
-beq $t2, '#', num3
-beq $t2, '$', num4
+beq $t2, '!', heart	#Switch Case for number to enter into simon circle
+beq $t2, '@', diamond	
+beq $t2, '#', spade
+beq $t2, '$', clover
 
-num1: la  $a2, AsciiHeart		#Load appropriate ascii key
-j outTextCall
-num2: la  $a2, AciiDiamond
-j outTextCall
-num3: la  $a2, AsciiSpade
-j outTextCall
-num4: la  $a2, AsciiClover
+heart: la  $a2, AsciiHeart		#Load appropriate ascii key
+j drawSuite
+diamond: la  $a2, AciiDiamond
+j drawSuite
+spade: la  $a2, AsciiSpade
+j drawSuite
+clover: la  $a2, AsciiClover
 
-
-
-outTextCall: 
-lw $a3, 8($t0)				#load color
+drawSuite: 
+lw $a3, 8($t0)		#load color
 jal OutText		#draw number in circle
-lw $ra, 16($sp)				#Store ra
+
+lw $t0, 0($sp)		#Load address to request card in deck
+lw $a0, 8($sp)		#Load address to x value of card
+lw $a1, 4($sp)		#Load address to y value of card
+lw $a3, 8($t0)		#load color
+
+lw $a2, 0($t0)		#Load char for card number
+add $a1, $a1, 12		#Offset y to draw number
+
+beq $a2, '0', num0	#Switch Case to get ascii value for DigitTable
+beq $a2, '1', num1	
+beq $a2, '2', num2
+beq $a2, '3', num3
+beq $a2, '4', num4
+beq $a2, '5', num5	
+beq $a2, '6', num6
+beq $a2, '7', num7
+beq $a2, '8', num8
+beq $a2, '9', num9
+beq $a2, 10, num10
+beq $a2, 'J', letterJ
+beq $a2, 'Q', letterQ
+beq $a2, 'K', letterK
+beq $a2, 'A', letterA
+
+num0: la  $a2, Text0		#Load appropriate ascii key
+j drawNumber
+num1: la  $a2, Text1
+j drawNumber
+num2: la  $a2, Text2
+j drawNumber
+num3: la  $a2, Text3
+j drawNumber
+num4: la  $a2, Text4
+j drawNumber
+num5: la  $a2, Text5
+j drawNumber
+num6: la  $a2, Text6
+j drawNumber
+num7: la  $a2, Text7
+j drawNumber
+num8: la  $a2, Text8
+j drawNumber
+num9: la  $a2, Text9
+j drawNumber
+num10: la  $a2, Text1	#Draw first letter for 10, "beq $a2, 10, num0" below handles the second letter "0"
+j drawNumber
+letterJ: la  $a2, TextJ
+j drawNumber
+letterQ: la  $a2, TextQ
+j drawNumber
+letterK: la  $a2, TextK
+j drawNumber
+letterA: la  $a2, TextA
+
+drawNumber:jal OutText		#draw number in circle
+
+lw $t0, 0($sp)		#Load address to request card in deck
+lw $a0, 8($sp)		#Load address to x value of card
+lw $a1, 4($sp)		#Load address to y value of card
+lw $a3, 8($t0)		#load color
+
+lw $a2, 0($t0)		#Load char for card number
+
+li $t1, 9		#
+sw $t1, 0($t0)		#Adjust a2 for after first pass
+
+add $a0, $a0, 8		#Offset x to draw number
+add $a1, $a1, 12	#Offset y to draw number
+
+beq $a2, 10, num0	#Draw the "0" in on the card for 10
+
+lw $ra, 20($sp)		#Store ra
+addiu $sp, $sp, 24     #Move Back up stack
 
 jr $ra
 
