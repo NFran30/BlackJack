@@ -171,15 +171,6 @@ jal Init		   #Initialize program, seeds random value
 
 jal DealOutCards	   #Deal out all cards at the beginning of the game
 
-
-runitagain:
-li $a0, 2
-li $a1, 1
-jal DrawCard
-add $s7, $s7, 1
-blt $s7, 7, runitagain
-
-
 exit:li   $v0, 10          #system call for exit
 syscall                    # Exit!
 
@@ -235,11 +226,13 @@ j finalizeX		#Save and adjust x value
 
 drawDealer:
 add $s4, $s4, 1		#Increment card count 
-beq $s4, 1, finalizeX	#Dont add offset of first card
+beq $s4, 1, faceDown	#Dont add offset of first card
 mul $t3, $t3, $s4	#Ajust offset depending on number of cards
 add $a0, $a0, $t3	#Add in offset of original x
 sub $a0, $a0, 20	#Correction to allow 1x 20
+j finalizeX		#Save and adjust x value
 
+faceDown:add $s6, $0, 1 #Flag to draw card facedown
 
 finalizeX:
 sw $a0, 12($sp)		#Save x value for after DrawRectangle, will need to draw number and suite
@@ -250,7 +243,7 @@ li $a2, 5		#Load color white, hardcoded
 li $a3, 18		#Load card size, hardcoded
 jal DrawRectangle	#Draw the card
 
-beq $s4, 1, doneDrawing	#Draw dealers first card face down
+beq $s6, 1, doneDrawing	#Draw dealers first card face down
 
 lw $a0, 20($sp)		#Restore original seat position
 lw $a1, 16($sp)		#Restore original deck index
@@ -355,6 +348,11 @@ add $a1, $a1, 12	#Offset y to draw number
 beq $a2, 10, num0	#Draw the "0" in on the card for 10
 
 doneDrawing:
+add $s6, $0, $0		#Flag to draw cards faceup
+
+li $a0, 500		#Hard code 500 ms pause, gives visual impression of dealing
+jal Pause		#Call pause
+
 lw $ra, 24($sp)		#Store ra
 addiu $sp, $sp, 28     #Move Back up stack
 
@@ -562,13 +560,17 @@ jr $ra
 ##### Deals cards, game begins ##########
 ########################################
 DealOutCards:
-addiu $sp, $sp, -4     #Allocate space on stack to save ra
-sw $ra, 0($sp)	        #Store ra
+addiu $sp, $sp, -8     #Allocate space on stack to save ra
+sw $ra, 4($sp)	        #Store ra
 
 
 add $t0, $0, $0		   	        #Counter for dealing all the cards
 dealCards:
+sw $t0, 0($sp)				#store counter
+
 jal GetRandNum				#Draw new card
+lw $ra, 4($sp)				#restore ra
+add $a1, $0, $v0			#Index in deck for DrawCard
 
 beq $t0, $0, dealFirstPlayer1st		#Switch Case for each player and dealer
 beq $t0, 1, dealYour1st
@@ -581,27 +583,35 @@ beq $t0, 7, dealDealer2nd
 
 
 dealFirstPlayer1st: la $t1, Player1Hand	#Add first card first players hand 	
+li $a0, 0				#Player 1 arg
 j storeFirstCard
 
 dealFirstPlayer2nd: la $t1, Player1Hand	#Add second card first players hand
+li $a0, 0				#Player 1 arg
 j storeSecondCard
 
 dealSecPlayer1st: la $t1, Player2Hand   #Add second card first players hand 	
+li $a0, 2				#Player 2 arg
 j storeFirstCard
 
 dealSecPlayer2nd: la $t1, Player2Hand #Add second card second players hand 	
+li $a0, 2				#Player 2 arg
 j storeSecondCard
 
 dealYour1st: la $t1, YourHand	     #Add first card first players hand 
+li $a0, 1				#My card arg
 j storeFirstCard
 
 dealYour2nd: la $t1, YourHand	     #Add second card to your hand 
+li $a0, 1				#My card arg
 j storeSecondCard
 
 dealDealer1st: la $t1, DealersHand   #Add first card first dealers hand 
+li $a0, 3				#Dealer card arg
 j storeFirstCard		     
 
 dealDealer2nd: la $t1, DealersHand   #Add second card first dealers hand 
+li $a0, 3				#Dealer card arg
 j storeSecondCard
 
 storeFirstCard: sw $v0, 0($t1)       #Store anyone's first card
@@ -609,12 +619,16 @@ j cardDelt
 storeSecondCard: sw $v0, 4($t1)      #Store anyone's second card
 j cardDelt
 
-cardDelt:add $t0, $t0, 1	     #Inc counter
+cardDelt:
+
+jal DrawCard				#Draw the card
+lw $t0, 0($sp)				#Restore counter
+add $t0, $t0, 1	     			#Inc counter
+lw $ra, 4($sp)	      			#Restore ra
 bne $t0, 8, dealCards		     #Continue if all cards haven't been dealt
 
 
-lw $ra, 0($sp)	      #Restore ra
-addiu $sp, $sp, 4     #Move back up stack
+addiu $sp, $sp, 8     #Move back up stack
 
 jr $ra
 
@@ -635,7 +649,6 @@ jr $ra
 ### v0 return a random number ########
 GetRandNum:
 add $a0, $0, $0	         #Generator 0, we only are using one generator for this lab
-sw $ra, 4($sp)           #Store stackpointer for $ra
 
 add $a1, $0, 51	         #Specify the limit on the range
 li $v0, 42               #specify read char
@@ -797,5 +810,29 @@ lw $a2, 4($sp)
 
 lw $ra, 12($sp)			#restore return address
 addi $sp, $sp, 16		#move stack pointer back up
+
+jr $ra
+
+############## Function to Pause ##################
+##### a0 Pause time "Milliseconds"
+##############################################
+Pause:
+add $t4, $0, $a0      #Copy store time in temp register
+
+add $t0, $0, $0       #Clear registers that will time comparison test
+add $t1, $0, $0
+
+li $v0, 30            #Get current timestap
+syscall
+
+add $t0, $a0, $0      #Store initial timestap
+
+timeLoop:
+syscall		       #Call for time to compare
+add $t1, $a0, $0       #store compare time
+subu $t3, $t1, $t0     #Subtract new first time stamp from second 
+bltu $t3, $t4, timeLoop #Check to see if time has elapsed
+
+syscall
 
 jr $ra
