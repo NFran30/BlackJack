@@ -7,10 +7,10 @@ Winner:            .asciiz "Congrats, you won!\n"
 Loser:             .asciiz "Mismatch! You lost...\n"
 Error_Width:       .asciiz "Error: Horizontal line is too long\n"
 DealersHand:	   .word 0:20 
-Player1Hand:
-Player2Hand:
-YourHand:
-NumbersGenerated:  .word 0:52 #First address holds last  
+Player1Hand:	   .word 0:20 
+Player2Hand:	   .word 0:20 
+YourHand:	   .word 0:20 
+NumbersGenerated:  .word 0:52 #First address holds last   
 
 HorizDividerLines:
 	.word 32, 32, 5, 192, 0	 #First horizontal line, right to left (x, y, ColorTable#, length, 0 = Pos Direction)
