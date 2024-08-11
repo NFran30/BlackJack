@@ -12,6 +12,10 @@ Player2Hand:
 YourHand:
 NumbersGenerated:  .word 0:52 #First address holds last  
 
+HorizDividerLines:
+	.word 32, 32, 5, 192, 0	 #First horizontal line, right to left (x, y, ColorTable#, length, 0 = Pos Direction)
+	.word 224, 32, 5, 192, 1 #First horizontal line, left to right (x, y, ColorTable#, -length, 1 = Neg Direction) 
+
 AsciiHeart:  .asciiz "!"	#Alias for heart	
 AciiDiamond: .asciiz "@"	#Alias for diamond
 AsciiSpade:  .asciiz "#"	#Alias for spade
@@ -44,10 +48,10 @@ ColorTable:
 	.word 0x3cb371     #medium Sea Green
 	
 CardTable:
-	.word 13, 128  #Circle 2, Left, Dodger Blue
-	.word 86, 223  #Cicle 4, Bottom, Medium Sea Green
-	.word 151, 128 #Circle 3, Right, Crimson
-	.word 86, 13   #Circle 1, Upper, Orange, Number X, Number Y
+	.word 3, 116  #Circle 2, Left, Dodger Blue
+	.word 44, 223  #Cicle 4, Bottom, Medium Sea Green
+	.word 148, 116 #Circle 3, Right, Crimson
+	.word 44, 13   #Circle 1, Upper, Orange, Number X, Number Y
 
 Deck:
 	.word '2', '!', 4 # (Card, Suite)
@@ -161,11 +165,19 @@ la $s0, NumbersGenerated   #Use as a unique stack pointer for numbers that were 
 
 Main:
 
+jal DrawQuadrants
+
 jal Init		   #Initialize program, seeds random value
 
 jal DealOutCards	   #Deal out all cards at the beginning of the game
 
+
+runitagain:
+li $a0, 2
+li $a1, 1
 jal DrawCard
+add $s7, $s7, 1
+blt $s7, 7, runitagain
 
 
 exit:li   $v0, 10          #system call for exit
@@ -176,10 +188,12 @@ syscall                    # Exit!
 ## $a1 Deck index
 #################################################
 DrawCard:
-addiu $sp, $sp, -24     #Open up two words on stack
-sw $ra, 20($sp)		#Store ra
-sw $a0, 16($sp)		#Save seat position
-sw $a1, 12($sp) 	#Save original a1
+addiu $sp, $sp, -28     #Open up two words on stack
+sw $ra, 24($sp)		#Store ra
+sw $a0, 20($sp)		#Save seat position
+sw $a1, 16($sp) 	#Save original a1
+
+add $t4, $0, $a0	#Copy orginal value for player that is being delt
 
 la $t0, CardTable	#Load address for card table
 mul $a0, $a0, 8		#Each position is contains x and y values, 8 bytes
@@ -188,23 +202,66 @@ add $t0, $t0, $a0	#Add data offset to calc correct index in table
 lw $a0, 0($t0)		#Load x value
 lw $a1, 4($t0)		#Load y value
 
-sw $a0, 8($sp)		#Save x value for after DrawRectangle, will need to draw number and suite
-sw $a1, 4($sp)
+add $t3, $0, 20	#Offset x axis by 20 when more a player has more than 1 card
 
+beq $t4, 0, drawPlayer1	#Check who's getting the card
+beq $t4, 1, drawMine
+beq $t4, 2, drawPlayer2
+beq $t4, 3, drawDealer
+
+drawPlayer1:
+add $s1, $s1, 1		#Increment card count 
+beq $s1, 1, finalizeX	#Dont add offset of first card
+mul $t3, $t3, $s1	#Ajust offset depending on number of cards
+add $a0, $a0, $t3	#Add in offset of original x
+sub $a0, $a0, 20	#Correction to allow 1x 20
+j finalizeX		#Save and adjust x value
+
+drawMine:
+add $s2, $s2, 1		#Increment card count 
+beq $s2, 1, finalizeX	#Dont add offset of first card
+mul $t3, $t3, $s2	#Ajust offset depending on number of cards
+add $a0, $a0, $t3	#Add in offset of original x
+sub $a0, $a0, 20	#Correction to allow 1x 20
+j finalizeX		#Save and adjust x value
+
+drawPlayer2:
+add $s3, $s3, 1		#Increment card count 
+beq $s3, 1, finalizeX	#Dont add offset of first card
+mul $t3, $t3, $s3	#Ajust offset depending on number of cards
+add $a0, $a0, $t3	#Add in offset of original x
+sub $a0, $a0, 20	#Correction to allow 1x 20
+j finalizeX		#Save and adjust x value
+
+drawDealer:
+add $s4, $s4, 1		#Increment card count 
+beq $s4, 1, finalizeX	#Dont add offset of first card
+mul $t3, $t3, $s4	#Ajust offset depending on number of cards
+add $a0, $a0, $t3	#Add in offset of original x
+sub $a0, $a0, 20	#Correction to allow 1x 20
+
+
+finalizeX:
+sw $a0, 12($sp)		#Save x value for after DrawRectangle, will need to draw number and suite
+sw $a1, 8($sp)
+
+drawBlankCard:
 li $a2, 5		#Load color white, hardcoded
 li $a3, 18		#Load card size, hardcoded
 jal DrawRectangle	#Draw the card
 
-lw $a0, 16($sp)		#Restore original seat position
-lw $a1, 12($sp)		#Restore original deck index
+beq $s4, 1, doneDrawing	#Draw dealers first card face down
+
+lw $a0, 20($sp)		#Restore original seat position
+lw $a1, 16($sp)		#Restore original deck index
 
 la $t0, Deck
-mul $a1, $a1, 12		#Each position is contains x and y values, 12 bytes
+mul $a1, $a1, 12	#Each position is contains x and y values, 12 bytes
 add $t0, $t0, $a1	#Add data offset to calc correct index in table
-sw $t0, 0($sp)		#Save address to the requested card info in deck for after after first OutText call
+sw $t0, 4($sp)		#Save address to the requested card info in deck for after after first OutText call
 
-lw $a0, 8($sp)		#Save x value for after DrawRectangle, will need to draw number and suite
-lw $a1, 4($sp)
+lw $a0, 12($sp)		#Save x value for after DrawRectangle, will need to draw number and suite
+lw $a1, 8($sp)
 
 lw $t1, 0($t0)		#Load char for card number
 lw $t2, 4($t0)		#Load char for suit
@@ -226,13 +283,13 @@ drawSuite:
 lw $a3, 8($t0)		#load color
 jal OutText		#draw number in circle
 
-lw $t0, 0($sp)		#Load address to request card in deck
-lw $a0, 8($sp)		#Load address to x value of card
-lw $a1, 4($sp)		#Load address to y value of card
+lw $t0, 4($sp)		#Load address to request card in deck
+lw $a0, 12($sp)		#Load address to x value of card
+lw $a1, 8($sp)		#Load address to y value of card
 lw $a3, 8($t0)		#load color
 
 lw $a2, 0($t0)		#Load char for card number
-add $a1, $a1, 12		#Offset y to draw number
+add $a1, $a1, 12	#Offset y to draw number
 
 beq $a2, '0', num0	#Switch Case to get ascii value for DigitTable
 beq $a2, '1', num1	
@@ -250,7 +307,7 @@ beq $a2, 'Q', letterQ
 beq $a2, 'K', letterK
 beq $a2, 'A', letterA
 
-num0: la  $a2, Text0		#Load appropriate ascii key
+num0: la  $a2, Text0		#Load appropriate ascii key for DigitTable
 j drawNumber
 num1: la  $a2, Text1
 j drawNumber
@@ -280,25 +337,26 @@ letterK: la  $a2, TextK
 j drawNumber
 letterA: la  $a2, TextA
 
-drawNumber:jal OutText		#draw number in circle
+drawNumber:jal OutText		#draw number on card
 
-lw $t0, 0($sp)		#Load address to request card in deck
-lw $a0, 8($sp)		#Load address to x value of card
-lw $a1, 4($sp)		#Load address to y value of card
+lw $t0, 4($sp)		#Load address to request card in deck
+lw $a0, 12($sp)		#Load address to x value of card
+lw $a1, 8($sp)		#Load address to y value of card
 lw $a3, 8($t0)		#load color
 
 lw $a2, 0($t0)		#Load char for card number
 
-li $t1, 9		#
-sw $t1, 0($t0)		#Adjust a2 for after first pass
+li $t1, 9		
+sw $t1, 0($sp)		#Adjust a2 for after first pass
 
 add $a0, $a0, 8		#Offset x to draw number
 add $a1, $a1, 12	#Offset y to draw number
 
 beq $a2, 10, num0	#Draw the "0" in on the card for 10
 
-lw $ra, 20($sp)		#Store ra
-addiu $sp, $sp, 24     #Move Back up stack
+doneDrawing:
+lw $ra, 24($sp)		#Store ra
+addiu $sp, $sp, 28     #Move Back up stack
 
 jr $ra
 
@@ -667,5 +725,77 @@ j returnColor
 
 returnColor:
 add $v1, $0, $t0				#Return the color
+
+jr $ra
+
+########### Function to Draw the Quadrants ########
+###################################################
+DrawQuadrants:
+
+addiu $sp, $sp, -4     		#Allocate space on stack to save ra
+sw $ra, 0($sp)	       		#Store ra 
+
+la $t0, HorizDividerLines	#Load address of array on stack	
+lw $a0, 0($t0)			#Load word for x variable of horiz divider
+lw $a1, 4($t0)          	#Load word for y variable of horiz divider
+lw $a2, 8($t0)          	#Load word for white pixel color
+lw $a3, 12($t0)			#Length of line
+lw $t1, 16($t0)  		#Direction of the line
+
+jal DrawDiagLine 		#Draw horizontal line left to right
+
+lw $ra, 0($sp)	       		#Restore ra 
+
+la $t0 HorizDividerLines	#Load address of array on stack	
+lw $a0, 20($t0)			#Load word for x variable of horiz divider
+lw $a1, 24($t0)         	#Load word for y variable of horiz divider
+lw $a2, 28($t0)         	#Load word for white pixel color
+lw $a3, 32($t0) 		#Length of line
+lw $t1, 36($t0)  		#Direction of the line
+
+jal DrawDiagLine		#Draw horizontal line right to left
+
+lw $ra, 0($sp)	       		#Store ra 
+addiu $sp, $sp, 4      		#Move back up stack
+
+jr $ra
+
+######Function to Draw a Diagnal Line####################
+## $a0 for x 0-31
+## $a1 for y 0-31
+## $a2 for color number 0-7
+## $a3 length of the Diagnal line
+## $t1 draw direction on x axis, 0 pos, 1 neg direction
+#########################################################
+DrawDiagLine:
+addi $sp, $sp, -16		#store all changable variables to stack
+sw $ra, 12($sp)			#Store return address on stack
+sw $a1, 8($sp)			#Store a registers that could change
+sw $a2, 4($sp)
+sw $t1, 0($sp)			#Save the signal for which direction to move on x axis
+
+add $t0, $0, 32 		#Max Width of Bitmap
+sub $t0, $t0, $a0		#Current distance to wall
+		
+DiagnalLoop:
+jal DrawDot			#Mark the dot on bitmap
+lw $t1, 0($sp)			#Restore the signal for direction to move on x axis
+add $a3, $a3, -1		#Decrement remaining line length
+beqz $t1, movePosDir		#Traverse from left to right
+beq $t1, 1, moveNegDir		#Traverse from right to left
+movePosDir:add $a0, $a0, 1	#Incrments x in when moving in positive direction
+j proceed 
+moveNegDir: sub $a0, $a0, 1	#Incrments x in when moving in negative direction
+proceed:add $a1, $a1, 1		#Increment y
+bne $a3, $0, DiagnalLoop	#Continue while line lenth hasn't been achieved
+
+add $ra, $ra, 4			#Move back up stack
+
+lw $a1, 8($sp)			#restore register, DrawDot could change them
+lw $a2, 4($sp)
+
+
+lw $ra, 12($sp)			#restore return address
+addi $sp, $sp, 16		#move stack pointer back up
 
 jr $ra
