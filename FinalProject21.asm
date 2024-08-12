@@ -6,11 +6,12 @@ Simon_Array:       .word 0:80
 Winner:            .asciiz "Congrats, you won!\n"
 Loser:             .asciiz "Mismatch! You lost...\n"
 Error_Width:       .asciiz "Error: Horizontal line is too long\n"
+HitOrStay:         .asciiz "Type 1 if you would like to hit, type 0 if you would like to stay..."
 DealersHand:	   .word 0:20 
 Player1Hand:	   .word 0:20 
 Player2Hand:	   .word 0:20 
-YourHand:	   .word 0:20 
-NumbersGenerated:  .word 0:52 #First address holds last   
+MyHand:	   	   .word 0:20 
+NumbersGenerated:  .word 0:52 #First address holds last  
 
 HorizDividerLines:
 	.word 32, 32, 5, 192, 0	 #First horizontal line, right to left (x, y, ColorTable#, length, 0 = Pos Direction)
@@ -54,7 +55,7 @@ CardTable:
 	.word 44, 13   #Circle 1, Upper, Orange, Number X, Number Y
 
 Deck:
-	.word '2', '!', 4 # (Card, Suite)
+	.word '2', '!', 4 # (Card number, Suite, color) (! = heart, @ = diamond, # = spade, $ = club)
 	.word '2', '@', 4 # Pattern continues through entire array
 	.word '2', '#', 0
 	.word '2', '$', 0
@@ -90,7 +91,7 @@ Deck:
 	.word  10, '@', 4
 	.word  10, '#', 0
 	.word  10, '$', 0
-	.word  10, '!', 4
+	.word 'J', '!', 4
 	.word 'J', '@', 4
 	.word 'J', '#', 0
 	.word 'J', '$', 0
@@ -171,8 +172,206 @@ jal Init		   #Initialize program, seeds random value
 
 jal DealOutCards	   #Deal out all cards at the beginning of the game
 
+playAllHands:
+add $a0, $0, $s7
+jal PlayHand
+add $s7, $s7, 1
+blt $s7, 5, playAllHands
+
 exit:li   $v0, 10          #system call for exit
 syscall                    # Exit!
+
+#### Play Hand ###############################
+## a0 seat that makes decision
+##############################################
+PlayHand:
+addiu $sp, $sp, -28     #Open up two words on stack
+sw $ra, 24($sp)	       #Store ra
+
+bne $a0, 3, checkHandAgain	#When not dealers turn, card isn't flipped
+
+
+
+checkHandAgain:
+add $t4, $0, $0		#Temp hold to count total score in hand
+
+beq $a0, 0, cpu1	#SwitchCase to check a given hand
+beq $a0, 1, myHand
+beq $a0, 2, cpu2
+beq $a0, 3, dealerHand
+
+cpu1:
+add $t0, $0, $s1	#Temp store for how many cards in the hand
+la $t1, Player1Hand	#Load address to player 1
+j checkHand
+
+myHand:
+add $t0, $0, $s2	#Temp store for how many cards in the hand
+la $t1, MyHand		#Load address to player 1
+j checkHand
+
+cpu2:
+add $t0, $0, $s3	#Temp store for how many cards in the hand
+la $t1, Player2Hand	#Load address to player 1
+j checkHand
+
+dealerHand:
+add $t0, $0, $s4	#Temp store for how many cards in the hand
+la $t1, DealersHand	#Load address to player 1
+
+checkHand:
+lw $a1, 0($t1)		#Load card index for Deck
+
+jal GetCardValue
+
+add $t4, $t4, $v0	#Add to sum
+add $t1, $t1, 4		#Check the next card
+sub $t0, $t0, 1		#Decremnt cards traversed in hand
+bne $t0, $0, checkHand	#Continue if more cards
+
+beq $a0, 1, myDecision	#Allow for my decision
+
+compDecision:
+ble $t4, 16, hitMe			#Take another card less than 17
+beq $a0, 0, savePlayer1Total		#Determine which cpu hand is being played
+beq $a0, 2, savePlayer2Total
+beq $a0, 3, saveDealerTotal
+
+savePlayer1Total: add $s1, $0, $t4	#Chanage total number for cards in hand to Player1 "cpu" final score
+j stay					#Stay when at 17 or higher
+savePlayer2Total: add $s3, $0, $t4	#Chanage total number for cards in hand to Player2 "cpu" final score
+j stay					#Stay when at 17 or higher
+saveDealerTotal: add $s4, $0, $t4	#Chanage total number for cards in hand to dealer's final 
+j stay					#Stay when at 17 or higher
+
+myDecision:
+blt $t4, 21, askForAnother	#Ask for another card if under 21
+add $s2, $0, $t4		#Save total score
+bge $t4, 21, stay		#Either you have 21 or your over
+
+askForAnother: 
+sw $a0, 0($sp)		#Store seat number
+la $a0, HitOrStay    	#Asks end user if they would like another card
+li $v0, 4	    	
+syscall			#Print string
+
+li $a0, 10              #load char value into arg for new line
+li $v0, 11	        #cmd to print char,
+syscall
+
+li $v0, 5              #specify read int
+syscall
+bgt $v0, 1 askForAnother	#Read again if number is greater than 1 
+bltz $v0, askForAnother		#Read again if number is less than 0
+beq $v0, $0, stay		#Stay if you responded 0, else hitMe
+lw $a0, 0($sp)		#Restore seat number
+
+hitMe:
+sw $t1, 20($sp)		#Store values that could change after function call
+sw $t0, 16($sp)
+sw $t3, 12($sp)
+sw $a1, 8($sp)
+sw $t4, 4($sp)
+sw $a0, 0($sp)		#Restore seat number
+
+jal DealAnotherCard	#Get another card
+
+lw $a0, 0($sp)		#Restore seat number
+lw $t1, 20($sp)		#ReStore values 
+lw $t0, 16($sp)
+lw $t3, 12($sp)
+lw $a1, 8($sp)
+lw $t4, 4($sp)
+lw $ra, 24($sp)
+
+j checkHandAgain	#Checks hand again starting at the first index in hand
+
+stay:
+lw $ra, 24($sp)	       #ReStore ra
+addiu $sp, $sp, 24     #Open up two words on stack
+
+jr $ra
+
+## Get Card Value ########
+## a1 index in Deck
+### v0 decimal value
+############################
+GetCardValue:
+
+la $t3, Deck		#Load address for deck
+mul $a1, $a1, 12	#Each position is contains x and y values, 12 bytes
+add $t3, $t3, $a1	#First word at index
+
+lw $a1, 0($t3)		#Load card number value
+beq $a1, 0x41, ace	#If the the value is an ace, card is worth 11
+bgt $a1, 0x39, ten	#Anthing larger will be worth 10
+
+sub $a1, $a1, 0x30	#Hex to decimal, parse out 0-9 will be result
+j returnCardVal
+
+ace:li $a1, 11
+j returnCardVal
+ten:li $a1, 10 
+
+returnCardVal:add $v0, $0, $a1		#return decimal value
+
+jr $ra
+
+### Choose another card ##########
+## a0 seat
+## v0 new card index for Deck
+#################################
+DealAnotherCard:
+addiu $sp, $sp, -8      #Allocate space on stack to save ra
+sw $ra, 4($sp)	        #Store ra
+sw $a0, 0($sp)	        #Store which hand to place card
+
+jal GetRandNum		#Draw new card
+lw $a0, 0($sp)		#restore arg
+
+beq $a0, 0, player1Card	#Switch case on which player needs a card
+beq $a0, 1, myCard
+beq $a0, 2, player2Card
+beq $a0, 3, dealerCard
+
+player1Card:
+#add $s1, $s1, 1		#Add new card to running counter
+add $t1, $0, $s1	#Temp counter
+la $t0, Player1Hand
+j calcAndPlaceCard
+
+myCard:
+#add $s2, $s2, 1		#Add new card to running counter
+add $t1, $0, $s2	#Temp counter
+la $t0, MyHand
+j calcAndPlaceCard
+
+player2Card:
+#add $s3, $s3, 1		#Add new card to running counter
+add $t1, $0, $s3	#Temp counter
+la $t0, Player2Hand
+j calcAndPlaceCard
+
+dealerCard:
+#add $s4, $s4, 1
+add $t1, $0, $s4	#Temp counter
+la $t0, Player2Hand
+
+
+calcAndPlaceCard:
+mul $t1, $t1, 4		#Calc offset for array, each index is a word
+add $t0, $t0, $t1	#Offset address address
+
+sw $v0, 0($t0)		#Store in next avail address in hand
+
+add $a1, $0, $v0	#Copy index for DrawCard
+jal DrawCard
+
+lw $ra, 4($sp)	        #Re-Store ra
+
+addiu $sp, $sp, 8      #Move back up stack
+
+jr $ra
 
 ### Draw Card #################################
 ## $a0 seat position
@@ -232,7 +431,7 @@ add $a0, $a0, $t3	#Add in offset of original x
 sub $a0, $a0, 20	#Correction to allow 1x 20
 j finalizeX		#Save and adjust x value
 
-faceDown:add $s6, $0, 1 #Flag to draw card facedown
+faceDown:add $s6, $s6, 1 #Flag to draw card facedown
 
 finalizeX:
 sw $a0, 12($sp)		#Save x value for after DrawRectangle, will need to draw number and suite
@@ -572,7 +771,7 @@ jal GetRandNum				#Draw new card
 lw $ra, 4($sp)				#restore ra
 add $a1, $0, $v0			#Index in deck for DrawCard
 
-beq $t0, $0, dealFirstPlayer1st		#Switch Case for each player and dealer
+beq $t0, 0, dealFirstPlayer1st		#Switch Case for each player and dealer
 beq $t0, 1, dealYour1st
 beq $t0, 2, dealSecPlayer1st
 beq $t0, 3, dealDealer1st
@@ -598,11 +797,11 @@ dealSecPlayer2nd: la $t1, Player2Hand #Add second card second players hand
 li $a0, 2				#Player 2 arg
 j storeSecondCard
 
-dealYour1st: la $t1, YourHand	     #Add first card first players hand 
+dealYour1st: la $t1, MyHand	     #Add first card first players hand 
 li $a0, 1				#My card arg
 j storeFirstCard
 
-dealYour2nd: la $t1, YourHand	     #Add second card to your hand 
+dealYour2nd: la $t1, MyHand	     #Add second card to your hand 
 li $a0, 1				#My card arg
 j storeSecondCard
 
