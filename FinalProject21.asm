@@ -3,10 +3,15 @@
 Stack_Top: 	   #Allocates memory
 Stack_End:         .word 0:80 
 Simon_Array:       .word 0:80
-Winner:            .asciiz "Congrats, you won!\n"
+WinnerCPU1:        .asciiz "CPU1 is the winner: "
+YouWon:            .asciiz "You are the winner: "
+WinnerCPU2:        .asciiz "CPU1 is the winner: "
+TieMatch:	   .asciiz "Tie Match!"
+DealerWins:        .asciiz "The dealer is the winner: "
 Loser:             .asciiz "Mismatch! You lost...\n"
 Error_Width:       .asciiz "Error: Horizontal line is too long\n"
 HitOrStay:         .asciiz "Type 1 if you would like to hit, type 0 if you would like to stay..."
+Welcome:	   .asciiz "Welcome to BlackJack. The Dealer at the top of the table, CPU1 is on the left, YOUR CARDS are at the bottom, and CPU2 is to the right. Ace's will be 11 points. Press any key to start..."
 DealersHand:	   .word 0:20 
 Player1Hand:	   .word 0:20 
 Player2Hand:	   .word 0:20 
@@ -166,20 +171,97 @@ la $s0, NumbersGenerated   #Use as a unique stack pointer for numbers that were 
 
 Main:
 
-jal DrawQuadrants
+jal DrawQuadrants	#Draws the playing table
+
+#jal IntroMessage	#Informs end user about the game
 
 jal Init		   #Initialize program, seeds random value
 
 jal DealOutCards	   #Deal out all cards at the beginning of the game
 
-playAllHands:
+playAllHands:		#Circles through each hand at table and plays the hands
 add $a0, $0, $s7
 jal PlayHand
 add $s7, $s7, 1
 blt $s7, 5, playAllHands
 
+jal DetermineWinner
+
+
 exit:li   $v0, 10          #system call for exit
 syscall                    # Exit!
+
+##### Determine Winner #########
+################################
+DetermineWinner:
+add $t0, $0, $0			#Clear winning total reg
+
+checkWinner:			#Condition to check each player that didn't go over 21
+blt $s1, 22, chNewHighCPU1
+blt $s2, 22, chNewHighYou
+blt $s3, 22, chNewHighCPU2
+blt $s4, 22, chNewHighDealer
+
+chNewHighCPU1:
+add $s1, $0, $t0	#Add as current high score 	
+add $s1, $0, 22		#Prevent infinite loop
+la $a0, WinnerCPU1	#Set address for winning message
+j checkWinner		#Move to check your score
+
+chNewHighYou:
+add $t1, $0, $s2	#Temp reg to check condition below
+add $s2, $0, 22		#Prevent infinite loop
+blt $t0, $t1, checkWinner	#Branch if not new high score
+add $t0, $0, $t1	#Add new high score
+la $a0, YouWon		#Set address for winning message
+j checkWinner		#Move to check CPU2's score
+
+chNewHighCPU2:
+add $t1, $0, $s3	#Temp reg to check condition below
+add $s3, $0, 22		#Prevent infinite loop
+blt $t0, $t1, checkWinner	#Branch if not new high score
+add $t0, $0, $t1	#Add new high score
+la $a0, WinnerCPU2	#Set address for winning message
+j checkWinner		#Move to check CPU2's score
+
+chNewHighDealer:
+blt $t0, $s4, inform    #Dealer lost
+la $a0, DealerWins	#Set address for winning message
+add $t0, $0, $s4	#Set Winning score
+
+inform:
+li $v0, 4	    	#cmd to specify Print String Service
+syscall
+
+add $a0, $0, $t0	#Set arg to pring winning total
+li $v0, 1
+syscall
+
+li $a0, 10              #load char value into arg for new line
+li $v0, 11	        #cmd to print char,
+syscall
+
+jr $ra
+
+##### Intro Message ####
+########################
+IntroMessage:
+la $a0, Welcome		#Address to ascii welcome message
+li $v0, 4	    	#cmd to specify Print String Service
+syscall
+
+li $a0, 10              #load char value into arg for new line
+li $v0, 11	        #cmd to print char,
+syscall
+
+li $v0, 12              #specify read char
+syscall
+
+li $a0, 10              #load char value into arg for new line
+li $v0, 11	        #cmd to print char,
+syscall
+
+jr $ra
 
 #### Play Hand ###############################
 ## a0 seat that makes decision
@@ -189,8 +271,6 @@ addiu $sp, $sp, -28     #Open up two words on stack
 sw $ra, 24($sp)	       #Store ra
 
 bne $a0, 3, checkHandAgain	#When not dealers turn, card isn't flipped
-
-
 
 checkHandAgain:
 add $t4, $0, $0		#Temp hold to count total score in hand
@@ -259,10 +339,11 @@ li $a0, 10              #load char value into arg for new line
 li $v0, 11	        #cmd to print char,
 syscall
 
-li $v0, 5              #specify read int
+li $v0, 12              #specify read char
 syscall
-bgt $v0, 1 askForAnother	#Read again if number is greater than 1 
-bltz $v0, askForAnother		#Read again if number is less than 0
+
+bgt $v0, 0x31, askForAnother	#Read again if number is greater than 1 
+blt $v0, 0x30, askForAnother		#Read again if number is less than 0
 beq $v0, $0, stay		#Stay if you responded 0, else hitMe
 lw $a0, 0($sp)		#Restore seat number
 
@@ -500,6 +581,7 @@ beq $a2, 'K', letterK
 beq $a2, 'A', letterA
 
 num0: la  $a2, Text0		#Load appropriate ascii key for DigitTable
+sw $a2, 0($t0)			#Prevents infinate loop when drawing 10
 j drawNumber
 num1: la  $a2, Text1
 j drawNumber
