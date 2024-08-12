@@ -187,7 +187,6 @@ blt $s7, 5, playAllHands
 
 jal DetermineWinner
 
-
 exit:li   $v0, 10          #system call for exit
 syscall                    # Exit!
 
@@ -195,6 +194,10 @@ syscall                    # Exit!
 ################################
 DetermineWinner:
 add $t0, $0, $0			#Clear winning total reg
+
+li $a0, 10              #load char value into arg for new line
+li $v0, 11	        #cmd to print char,
+syscall
 
 checkWinner:			#Condition to check each player that didn't go over 21
 blt $s1, 22, chNewHighCPU1
@@ -211,7 +214,7 @@ j checkWinner		#Move to check your score
 chNewHighYou:
 add $t1, $0, $s2	#Temp reg to check condition below
 add $s2, $0, 22		#Prevent infinite loop
-blt $t0, $t1, checkWinner	#Branch if not new high score
+blt $t1, $t0, checkWinner	#Branch if not new high score
 add $t0, $0, $t1	#Add new high score
 la $a0, YouWon		#Set address for winning message
 j checkWinner		#Move to check CPU2's score
@@ -219,13 +222,13 @@ j checkWinner		#Move to check CPU2's score
 chNewHighCPU2:
 add $t1, $0, $s3	#Temp reg to check condition below
 add $s3, $0, 22		#Prevent infinite loop
-blt $t0, $t1, checkWinner	#Branch if not new high score
+blt $t1, $t0, checkWinner	#Branch if not new high score
 add $t0, $0, $t1	#Add new high score
 la $a0, WinnerCPU2	#Set address for winning message
 j checkWinner		#Move to check CPU2's score
 
 chNewHighDealer:
-blt $t0, $s4, inform    #Dealer lost
+blt $s4, $t0, inform    #Dealer lost
 la $a0, DealerWins	#Set address for winning message
 add $t0, $0, $s4	#Set Winning score
 
@@ -344,7 +347,7 @@ syscall
 
 bgt $v0, 0x31, askForAnother	#Read again if number is greater than 1 
 blt $v0, 0x30, askForAnother		#Read again if number is less than 0
-beq $v0, $0, stay		#Stay if you responded 0, else hitMe
+beq $v0, 0x30, stay		#Stay if you responded 0, else hitMe
 lw $a0, 0($sp)		#Restore seat number
 
 hitMe:
@@ -386,6 +389,7 @@ add $t3, $t3, $a1	#First word at index
 lw $a1, 0($t3)		#Load card number value
 beq $a1, 0x41, ace	#If the the value is an ace, card is worth 11
 bgt $a1, 0x39, ten	#Anthing larger will be worth 10
+beq $a1, 10, ten
 
 sub $a1, $a1, 0x30	#Hex to decimal, parse out 0-9 will be result
 j returnCardVal
@@ -908,6 +912,10 @@ add $t0, $t0, 1	     			#Inc counter
 lw $ra, 4($sp)	      			#Restore ra
 bne $t0, 8, dealCards		     #Continue if all cards haven't been dealt
 
+li $a0, 1000	# 1 second pause after deal is done
+jal Pause
+
+lw $ra, 4($sp)	      			#Restore ra
 
 addiu $sp, $sp, 8     #Move back up stack
 
